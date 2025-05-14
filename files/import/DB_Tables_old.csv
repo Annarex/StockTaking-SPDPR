@@ -1,0 +1,16 @@
+﻿Units_inventory;Units_extended_info;Order_status;Users;Departments;GroupDC;Category;Subcategory;Note;Unit_type
+id_unit_inventory;id_unit_inventory;id_order_status;id_user;id_department;id_group_dc;id_category;id_subcategory;id_note;id_unit_type
+id_category;device_name;order_status;fio;department_fullname;group_dc;category;subcategory;section;unit_type
+id_subcategory;ip;;cabinet;department_shortname;;;;title;
+cabinet;mac;;id_department;;;;;text;
+manufacturer;admin_login;;post;;;;;;
+model;admin_password;;account;;;;;;
+series;user_login;;ids_group_dc;;;;;;
+unit_count;user_password;;work_pc;;;;;;
+id_unit_type;;;work_pc_ip;;;;;;
+serial_number;;;telephone;;;;;;
+inventory_number;;;mail;;;;;;
+date_order_buhgaltery;;;;;;;;;
+id_order_status;;;;;;;;;
+date_issue;;;;;;;;;
+notice;;;;;;;;;
