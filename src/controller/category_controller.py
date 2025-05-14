@@ -2,11 +2,10 @@
 from PyQt5.QtWidgets import QMessageBox, QFileDialog, QDialog
 from PyQt5.QtCore import QDate
 
-from category_model import CategoryModel
-from ui.category_view import CategoryView, CategoryDialog # Import both View components
-from src.utils.csv_handler import import_data_from_csv, export_data_to_csv # Assuming these are available
-from database import DATABASE_SCHEMA # Need schema for CSV handler
-
+from src.model.category_model import CategoryModel
+from src.view.category_view import CategoryView, CategoryDialog
+from src.utils.csv_handler import import_data_from_csv, export_data_to_csv
+from database import DATABASE_SCHEMA
 
 class CategoryController:
     def __init__(self, db_connection):
@@ -20,10 +19,8 @@ class CategoryController:
         self.model = CategoryModel(self.db)
         self.view = CategoryView()
 
-        # Set the model for the view
         self.view.set_model(self.model.get_model())
 
-        # Connect signals from the View to slots in the Controller
         self.view.add_category_requested.connect(self.add_category)
         self.view.edit_category_requested.connect(self.edit_category)
         self.view.delete_category_requested.connect(self.delete_category)
@@ -70,16 +67,12 @@ class CategoryController:
 
         dialog = CategoryDialog(category_data=category_data, parent=self.view)
         if dialog.exec_() == QDialog.Accepted:
-            if dialog.validate_data(): # Basic UI validation
+            if dialog.validate_data(): 
                 new_data = dialog.get_data()
-                # The model's update_category method uses the row index,
-                # but passing the original ID might be useful for validation within the model.
-                # However, the current model update logic relies on the row index.
-                # Let's stick to passing the new data and the row index.
                 success, message = self.model.update_category(row, new_data)
                 if success:
                     QMessageBox.information(self.view, "Успех", message)
-                    self.refresh_list() # Refresh view after successful edit
+                    self.refresh_list()
                 else:
                     QMessageBox.critical(self.view, "Ошибка", message)
 

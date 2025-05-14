@@ -1,9 +1,9 @@
 # app.py
 import sys
 from PyQt5.QtWidgets import QApplication, QMessageBox, QDialog
-from ui.main_window import MainWindow # Импортируем класс главного окна
+from src.main_window import MainWindow # Импортируем класс главного окна
 from database import connect_db, create_all_tables, close_db # Импортируем функции для работы с БД
-from ui.login_dialog import LoginDialog # Импортируем класс диалога входа
+from src.login_dialog import LoginDialog # Импортируем класс диалога входа
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

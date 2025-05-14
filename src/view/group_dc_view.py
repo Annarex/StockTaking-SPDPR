@@ -28,10 +28,9 @@ class GroupDCView(QWidget):
         info_label = QLabel("Управление группами домена.")
         self.layout.addWidget(info_label)
 
-        # --- Настройки модели и таблицы ---
         self.table_name = "GroupDC" # Название таблицы
         self.column_names = [col.split()[0] for col in DATABASE_SCHEMA[self.table_name] if not col.strip().startswith("FOREIGN KEY")]
-        # self.unique_column = "group_dc" # Столбец для проверки уникальности
+    
 
         self.model = QSqlTableModel(self, self.db)
         self.model.setTable(self.table_name)
@@ -45,7 +44,7 @@ class GroupDCView(QWidget):
 
         self.table_view = QTableView()
         self.table_view.setModel(self.model)
-        # self.table_view.hideColumn(0)
+
         self.table_view.horizontalHeader().setStretchLastSection(True)
         self.table_view.setSelectionBehavior(QTableView.SelectRows)
         self.table_view.setSelectionMode(QTableView.SingleSelection)
@@ -53,8 +52,7 @@ class GroupDCView(QWidget):
 
         self.layout.addWidget(self.table_view)
 
-        # --- Элементы для добавления новой записи ---
-        add_layout = QHBoxLayout() # Используем QHBoxLayout для простоты
+        add_layout = QHBoxLayout()
 
         self.group_dc_input = QLineEdit()
         self.group_dc_input.setPlaceholderText("Введите новую группу домена")
@@ -89,7 +87,6 @@ class GroupDCView(QWidget):
 
 
     def _add_item(self):
-        """Добавляет новую группу домена в базу данных."""
         item_name = self.group_dc_input.text().strip()
 
         if not item_name:
@@ -181,13 +178,11 @@ class GroupDCView(QWidget):
 
 
     def _handle_data_changed(self, topLeft, bottomRight, roles):
-        """Обрабатывает сигнал dataChanged для проверки ошибок сохранения после редактирования ячейки."""
         if self.model.lastError().type() != QSqlError.NoError:
             error_message = self.model.lastError().text()
             print(f"Ошибка при сохранении изменения: {error_message}")
             QMessageBox.critical(self, "Ошибка сохранения", f"Не удалось сохранить изменение: {error_message}")
-            self.model.select() # Перезагружаем данные, чтобы откатить некорректное изменение в представлении
+            self.model.select() 
 
     def _init_new_row(self, row, record):
-        """Устанавливает значения по умолчанию для новой строки перед вставкой."""
-        pass # Для GroupDC нет специфичных значений по умолчанию
+        pass 

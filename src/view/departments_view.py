@@ -1,199 +1,150 @@
-# ui/departments_view.py
+# File: ui/departments_view.py
 import sys
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTableView, QPushButton,
                              QHBoxLayout, QLabel, QMessageBox, QLineEdit,
-                             QInputDialog,QFileDialog, QFormLayout)
-from PyQt5.QtSql import QSqlTableModel, QSqlDatabase, QSqlQuery, QSqlError
-from PyQt5.QtCore import Qt, QModelIndex, QDate
+                             QInputDialog, QFormLayout, QFileDialog,
+                             QDialog, QDialogButtonBox) # Импортируем QDialog и QDialogButtonBox
+from PyQt5.QtCore import Qt, QModelIndex, QDate, QVariant, pyqtSignal # Импортируем pyqtSignal
 
-# Импортируем универсальный обработчик CSV
-from src.utils.csv_handler import import_data_from_csv, export_data_to_csv
 
-# Импортируем схему базы данных
-from database import DATABASE_SCHEMA
+class DepartmentDialog(QDialog):
+    def __init__(self, department_data=None, parent=None):
+        super().__init__(parent)
+        self.department_data = department_data # Данные для редактирования
+
+        self.setWindowTitle("Добавить/Редактировать отдел")
+        self.layout = QFormLayout(self)
+
+        # ID отдела автоинкрементный, не вводим при добавлении, отображаем при редактировании
+        self.id_department_input = QLineEdit()
+        self.id_department_input.setReadOnly(True) # ID не редактируется
+
+        self.fullname_input = QLineEdit()
+        self.fullname_input.setPlaceholderText("Введите полное название отдела")
+        self.fullname_input.setMaxLength(50) # Ограничение по длине
+
+        self.shortname_input = QLineEdit()
+        self.shortname_input.setPlaceholderText("Введите краткое название отдела")
+        self.shortname_input.setMaxLength(50) # Ограничение по длине
+
+        # Если редактируем, заполняем поля текущими данными
+        if self.department_data:
+            self.id_department_input.setText(str(self.department_data.get('id_department', '')))
+            self.fullname_input.setText(str(self.department_data.get('department_fullname', '')))
+            self.shortname_input.setText(str(self.department_data.get('department_shortname', '')))
+
+
+        self.layout.addRow("ID Отдела:", self.id_department_input)
+        self.layout.addRow("Полное название:", self.fullname_input)
+        self.layout.addRow("Краткое название:", self.shortname_input)
+
+        # Кнопки OK и Cancel
+        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        self.layout.addWidget(self.button_box)
+
+    def get_data(self):
+        data = {
+            'id_department': self.id_department_input.text().strip() if self.department_data else None,
+            'department_fullname': self.fullname_input.text().strip(),
+            'department_shortname': self.shortname_input.text().strip(),
+        }
+        return data
+
+    def validate_data(self):
+        data = self.get_data()
+        if not data['department_fullname']:
+             QMessageBox.warning(self, "Предупреждение", "Пожалуйста, введите полное название отдела.")
+             return False
+        if len(data['department_fullname']) > 50:
+             QMessageBox.warning(self, "Предупреждение", "Полное название отдела не может превышать 50 символов.")
+             return False
+        if len(data['department_shortname']) > 50:
+             QMessageBox.warning(self, "Предупреждение", "Краткое название отдела не может превышать 50 символов.")
+             return False
+
+        return True
+
 
 class DepartmentsView(QWidget):
-    def __init__(self, db_connection):
-        super().__init__()
+    add_department_requested = pyqtSignal()
+    edit_department_requested = pyqtSignal(int) 
+    delete_department_requested = pyqtSignal(int)
+    refresh_list_requested = pyqtSignal()
+    import_csv_requested = pyqtSignal()
+    export_csv_requested = pyqtSignal()
 
-        self.db = db_connection
-        if not self.db or not self.db.isOpen():
-            print("Ошибка: Соединение с базой данных не установлено или закрыто.")
-            return
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
         self.setWindowTitle("Управление отделами")
-
         self.layout = QVBoxLayout(self)
-
         info_label = QLabel("Управление отделами.")
         self.layout.addWidget(info_label)
 
-        # --- Настройки модели и таблицы ---
-        self.table_name = "Departments" # Название таблицы
-        self.column_names = [col.split()[0] for col in DATABASE_SCHEMA[self.table_name] if not col.strip().startswith("FOREIGN KEY")]
-        self.unique_column = "department_fullname" # Столбец для проверки уникальности
-
-        self.model = QSqlTableModel(self, self.db)
-        self.model.setTable(self.table_name)
-        self.model.setEditStrategy(QSqlTableModel.OnFieldChange)
-        self.model.select()
-
-        header_labels = ["ID", "Полное название", "Краткое название"]
-        for i, header_text in enumerate(header_labels):
-             if i < len(self.column_names):
-                self.model.setHeaderData(i, Qt.Horizontal, header_text)
-
+        # --- Настройки таблицы ---
         self.table_view = QTableView()
-        self.table_view.setModel(self.model)
-        self.table_view.horizontalHeader().setStretchLastSection(True)
-        self.table_view.setSelectionBehavior(QTableView.SelectRows)
-        self.table_view.setSelectionMode(QTableView.SingleSelection)
-        self.table_view.setEditTriggers(QTableView.DoubleClicked | QTableView.SelectedClicked)
-
+        # Модель данных будет установлена Контроллером
+        self.table_view.horizontalHeader().setStretchLastSection(True) # Растягиваем последний столбец
+        self.table_view.setSelectionBehavior(QTableView.SelectRows) # Выделяем целые строки
+        self.table_view.setSelectionMode(QTableView.SingleSelection) # Разрешаем выделять только одну строку
+        self.table_view.setEditTriggers(QTableView.NoEditTriggers) # Отключаем редактирование прямо в таблице (редактирование через диалог)
         self.layout.addWidget(self.table_view)
 
-        # --- Элементы для добавления новой записи ---
-        add_form_layout = QFormLayout()
+        # Подключаем двойной клик по строке для редактирования
+        self.table_view.doubleClicked.connect(self._on_double_click)
 
-        self.fullname_input = QLineEdit()
-        self.shortname_input = QLineEdit()
 
-        add_form_layout.addRow("Полное название:", self.fullname_input)
-        add_form_layout.addRow("Краткое название:", self.shortname_input)
-
-        add_button = QPushButton("Добавить отдел")
-        add_button.clicked.connect(self._add_item)
-
-        add_layout = QHBoxLayout()
-        add_layout.addLayout(add_form_layout)
-        add_layout.addWidget(add_button, alignment=Qt.AlignBottom)
-
-        self.layout.addLayout(add_layout)
-
-        # --- Кнопки управления (Удалить, Импорт, Экспорт) ---
+        # --- Кнопки управления (Добавить, Редактировать, Удалить, Импорт, Экспорт, Обновить) ---
         buttons_layout = QHBoxLayout()
+        add_button = QPushButton("Добавить отдел")
+        edit_button = QPushButton("Редактировать выбранный")
         delete_button = QPushButton("Удалить выбранный")
-        delete_button.clicked.connect(self._delete_selected_item)
-        buttons_layout.addWidget(delete_button)
-
         import_button = QPushButton("Импорт из CSV...")
-        import_button.clicked.connect(self._import_from_csv)
-        buttons_layout.addWidget(import_button)
-
         export_button = QPushButton("Экспорт в CSV...")
-        export_button.clicked.connect(self._export_to_csv)
-        buttons_layout.addWidget(export_button)
+        refresh_button = QPushButton("Обновить список")
 
+        buttons_layout.addWidget(add_button)
+        buttons_layout.addWidget(edit_button)
+        buttons_layout.addWidget(delete_button)
+        buttons_layout.addWidget(import_button)
+        buttons_layout.addWidget(export_button)
+        buttons_layout.addWidget(refresh_button)
         buttons_layout.addStretch()
 
         self.layout.addLayout(buttons_layout)
 
-        self.model.dataChanged.connect(self._handle_data_changed)
-        self.model.primeInsert.connect(self._init_new_row)
+        add_button.clicked.connect(self.add_department_requested.emit)
+        edit_button.clicked.connect(self._on_edit_button_clicked)
+        delete_button.clicked.connect(self._on_delete_button_clicked)
+        import_button.clicked.connect(self.import_csv_requested.emit)
+        export_button.clicked.connect(self.export_csv_requested.emit)
+        refresh_button.clicked.connect(self.refresh_list_requested.emit)
 
+    def set_model(self, model):
+        self.table_view.setModel(model)
 
-    def _add_item(self):
-        """Добавляет новый отдел в базу данных."""
-        fullname = self.fullname_input.text().strip()
-        shortname = self.shortname_input.text().strip()
-
-        if not fullname:
-            QMessageBox.warning(self, "Предупреждение", "Пожалуйста, введите полное название отдела.")
-            return
-
-        query = QSqlQuery(self.db)
-        query.prepare(f"SELECT COUNT(*) FROM {self.table_name} WHERE department_fullname = ?")
-        query.addBindValue(fullname)
-        if query.exec_() and query.next():
-            if query.value(0) > 0:
-                QMessageBox.warning(self, "Предупреждение", f"Отдел с полным названием '{fullname}' уже существует.")
-                return
-
-        row_count = self.model.rowCount()
-        self.model.insertRow(row_count)
-        # Столбцы: 1=department_fullname, 2=department_shortname
-        self.model.setData(self.model.index(row_count, 1), fullname)
-        self.model.setData(self.model.index(row_count, 2), shortname)
-
-        if self.model.submitAll():
-            print(f"Отдел '{fullname}' успешно добавлен.")
-            self.fullname_input.clear()
-            self.shortname_input.clear()
-        else:
-            print("Ошибка при добавлении отдела:", self.model.lastError().text())
-            QMessageBox.critical(self, "Ошибка", f"Не удалось добавить отдел: {self.model.lastError().text()}")
-            self.model.revertAll()
-
-    def _delete_selected_item(self):
-        """Удаляет выбранный отдел."""
+    def get_selected_row(self):
         selected_indexes = self.table_view.selectedIndexes()
         if not selected_indexes:
+            return -1
+        return selected_indexes[0].row()
+
+    def _on_double_click(self, index):
+        row = index.row()
+        self.edit_department_requested.emit(row)
+
+    def _on_edit_button_clicked(self):
+        row = self.get_selected_row()
+        if row == -1:
+            QMessageBox.warning(self, "Предупреждение", "Пожалуйста, выберите отдел для редактирования.")
+            return
+        self.edit_department_requested.emit(row)
+
+    def _on_delete_button_clicked(self):
+        row = self.get_selected_row()
+        if row == -1:
             QMessageBox.warning(self, "Предупреждение", "Пожалуйста, выберите отдел для удаления.")
             return
-
-        selected_index = selected_indexes[0]
-        row = selected_index.row()
-
-        item_name = self.model.data(self.model.index(row, 1), Qt.DisplayRole) # Столбец 1 - department_fullname
-
-        reply = QMessageBox.question(self, "Подтверждение удаления",
-                                     f"Вы уверены, что хотите удалить отдел '{item_name}'?",
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-
-        if reply == QMessageBox.Yes:
-            if self.model.removeRow(row):
-                if self.model.submitAll():
-                    print(f"Отдел '{item_name}' успешно удален.")
-                else:
-                    print("Ошибка при сохранении удаления:", self.model.lastError().text())
-                    QMessageBox.critical(self, "Ошибка", f"Не удалось удалить отдел: {self.model.lastError().text()}")
-                    self.model.revertAll()
-            else:
-                print("Ошибка при удалении строки из модели.")
-                QMessageBox.critical(self, "Ошибка", "Не удалось удалить строку из модели.")
-
-    def _import_from_csv(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, f"Импорт данных в таблицу '{self.table_name}'","", "CSV файлы (*.csv);;Все файлы (*)")
-        if file_path:
-            print(f"Выбран файл для импорта в {self.table_name}: {file_path}")
-            success, message = import_data_from_csv(self.db, file_path, self.table_name, self.column_names,column_digits={'id_department': 2}, unique_column=self.unique_column)
-
-            if success:
-                QMessageBox.information(self, "Импорт завершен", message)
-                self.model.select()
-            else:
-                QMessageBox.critical(self, "Ошибка импорта", message)
-        else:
-            print("Выбор файла отменен.")
-
-    def _export_to_csv(self):
-        """Открывает диалог сохранения файла и запускает экспорт."""
-        default_filename = f"{self.table_name}_export_{QDate.currentDate().toString('yyyyMMdd')}.csv"
-        file_path, _ = QFileDialog.getSaveFileName(self, f"Экспорт данных из таблицы '{self.table_name}'",
-                                                   default_filename,
-                                                   "CSV файлы (*.csv);;Все файлы (*)")
-
-        if file_path:
-            print(f"Выбран файл для экспорта из {self.table_name}: {file_path}")
-            success, message = export_data_to_csv(self.db, file_path, self.table_name, self.column_names)
-
-            if success:
-                QMessageBox.information(self, "Экспорт завершен", message)
-                print(f"Экспорт сохранен: {file_path}")
-            else:
-                QMessageBox.critical(self, "Ошибка экспорта", message)
-        else:
-            print("Сохранение отчета отменено.")
-
-
-    def _handle_data_changed(self, topLeft, bottomRight, roles):
-        """Обрабатывает сигнал dataChanged для проверки ошибок сохранения после редактирования ячейки."""
-        if self.model.lastError().type() != QSqlError.NoError:
-            error_message = self.model.lastError().text()
-            print(f"Ошибка при сохранении изменения: {error_message}")
-            QMessageBox.critical(self, "Ошибка сохранения", f"Не удалось сохранить изменение: {error_message}")
-            self.model.select() # Перезагружаем данные, чтобы откатить некорректное изменение в представлении
-
-    def _init_new_row(self, row, record):
-        """Устанавливает значения по умолчанию для новой строки перед вставкой."""
-        pass # Для Departments нет специфичных значений по умолчанию
+        self.delete_department_requested.emit(row)
