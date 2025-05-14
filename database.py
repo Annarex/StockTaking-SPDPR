@@ -75,8 +75,8 @@ DATABASE_SCHEMA = {
         "user_password VARCHAR(20)",
         "FOREIGN KEY (id_unit_inventory) REFERENCES Units_inventory(id_unit_inventory) ON DELETE CASCADE" # FK
     ],
-    "Users": [
-        "id_user INTEGER PRIMARY KEY",
+    "Employee": [
+        "id_employee INTEGER PRIMARY KEY",
         "fio VARCHAR(60) NOT NULL",
         "cabinet VARCHAR(6)",
         "id_department VARCHAR(2)",
@@ -152,8 +152,8 @@ def create_units_inventory_table(db):
 def create_units_extended_info_table(db):
     return create_table(db, "Units_extended_info", DATABASE_SCHEMA["Units_extended_info"])
 
-def create_users_table(db):
-    return create_table(db, "Users", DATABASE_SCHEMA["Users"])
+def create_employee_table(db):
+    return create_table(db, "Employee", DATABASE_SCHEMA["Employee"])
 
 def create_departments_table(db):
     return create_table(db, "Departments", DATABASE_SCHEMA["Departments"])
@@ -168,37 +168,24 @@ def create_note_table(db):
 
 # --- Главная функция создания всех таблиц ---
 def create_all_tables(db):
-    """
-    Создает все необходимые таблицы в базе данных согласно DATABASE_SCHEMA.
-    Порядок создания важен из-за внешних ключей.
-    """
     if db is None or not db.isOpen():
         print("Ошибка: База данных не открыта для создания всех таблиц.")
         return False
 
-    # Включаем поддержку внешних ключей перед созданием таблиц
-    # Это важно, чтобы CREATE TABLE с FK не выдавал ошибку, если ссылочная таблица еще не создана
-    # Хотя CREATE TABLE IF NOT EXISTS обычно более лоялен.
-    # PRAGMA foreign_keys = ON; также вызывается в create_table, но здесь для надежности.
     query = QSqlQuery(db)
     if not query.exec_("PRAGMA foreign_keys = ON;"):
          print("Предупреждение: Не удалось включить поддержку внешних ключей перед созданием таблиц.")
          print(query.lastError().text())
 
-
     success = True
-    # Создаем таблицы в порядке, который учитывает зависимости внешних ключей
-    # Например, Category должна быть создана до Subcategory и Units_inventory
     if not create_category_table(db): success = False
     if not create_subcategory_table(db): success = False # Зависит от Category
     if not create_unit_type_table(db): success = False
     if not create_order_status_table(db): success = False
     if not create_units_inventory_table(db): success = False # Зависит от Category, Subcategory, Unit_type, Order_status
     if not create_units_extended_info_table(db): success = False # Зависит от Units_inventory
-    if not create_users_table(db): success = False
+    if not create_employee_table(db): success = False
     if not create_departments_table(db): success = False
     if not create_group_dc_table(db): success = False
     if not create_note_table(db): success = False
-
-
     return success

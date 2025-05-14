@@ -1,26 +1,92 @@
-# ui/category_view.py
+# File: ui/category_view.py
 import sys
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTableView, QPushButton,
                              QHBoxLayout, QLabel, QMessageBox, QLineEdit,
-                             QInputDialog, QFormLayout, QFileDialog)
+                             QInputDialog, QFormLayout, QFileDialog,
+                             QDialog, QDialogButtonBox) # Import QDialog and QDialogButtonBox
 from PyQt5.QtSql import QSqlTableModel, QSqlDatabase, QSqlQuery, QSqlError
-from PyQt5.QtCore import Qt, QModelIndex, QDate, QVariant
-import re # Для валидации двух символов
+from PyQt5.QtCore import Qt, QModelIndex, QDate, QVariant, pyqtSignal # Import pyqtSignal
+import re # Для валидации двух символов (остается в View/Dialog для UI-валидации)
 
-# Импортируем универсальный обработчик CSV
-from src.utils.csv_handler import import_data_from_csv, export_data_to_csv
+# Импортируем универсальный обработчик CSV (Controller will use this)
+# from src.utils.csv_handler import import_data_from_csv, export_data_to_csv
 
-# Импортируем схему базы данных для получения названий таблиц и столбцов
-from database import DATABASE_SCHEMA
+# Импортируем схему базы данных (Model will use this)
+# from database import DATABASE_SCHEMA
+
+# --- Диалог для добавления/редактирования категории ---
+# Этот диалог остается частью View, но логика сохранения переносится в Controller
+class CategoryDialog(QDialog):
+    def __init__(self, category_data=None, parent=None):
+        super().__init__(parent)
+        self.category_data = category_data # None для добавления, dict для редактирования
+
+        self.setWindowTitle("Добавить/Редактировать категорию")
+        self.layout = QFormLayout(self)
+
+        self.category_id_input = QLineEdit()
+        self.category_id_input.setPlaceholderText("Введите 2 символа ID")
+        self.category_id_input.setMaxLength(2) # Ограничение по длине
+
+        self.category_name_input = QLineEdit()
+        self.category_name_input.setPlaceholderText("Введите название категории")
+        self.category_name_input.setMaxLength(40) # Ограничение по длине
+
+        # Если редактируем, поле ID не должно быть редактируемым
+        if self.category_data:
+             self.category_id_input.setReadOnly(True)
+             self.category_id_input.setText(str(self.category_data.get('id_category', '')))
+             self.category_name_input.setText(str(self.category_data.get('category', '')))
+
+
+        self.layout.addRow("ID Категории:", self.category_id_input)
+        self.layout.addRow("Название категории:", self.category_name_input)
+
+        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        self.layout.addWidget(self.button_box)
+
+    def get_data(self):
+        """Возвращает данные из полей диалога в виде словаря."""
+        data = {
+            'id_category': self.category_id_input.text().strip(),
+            'category': self.category_name_input.text().strip(),
+        }
+        return data
+
+    def validate_data(self):
+        """Проверяет введенные данные (базовая валидация UI)."""
+        data = self.get_data()
+        if not data['id_category']:
+             QMessageBox.warning(self, "Предупреждение", "Пожалуйста, введите ID категории.")
+             return False
+        if len(data['id_category']) != 2:
+             QMessageBox.warning(self, "Предупреждение", "ID категории должен состоять ровно из 2 символов.")
+             return False
+        # TODO: Добавить валидацию, если ID должен быть только цифрами или иметь определенный формат
+
+        if not data['category']:
+            QMessageBox.warning(self, "Предупреждение", "Пожалуйста, введите название категории.")
+            return False
+        if len(data['category']) > 40:
+             QMessageBox.warning(self, "Предупреждение", "Название категории не может превышать 40 символов.")
+             return False
+
+        return True
+
 
 class CategoryView(QWidget):
-    def __init__(self, db_connection):
-        super().__init__()
+    # Define signals that the Controller will connect to
+    add_category_requested = pyqtSignal()
+    edit_category_requested = pyqtSignal(int) # Emits row index
+    delete_category_requested = pyqtSignal(int) # Emits row index
+    refresh_list_requested = pyqtSignal()
+    import_csv_requested = pyqtSignal()
+    export_csv_requested = pyqtSignal()
 
-        self.db = db_connection
-        if not self.db or not self.db.isOpen():
-            print("Ошибка: Соединение с базой данных не установлено или закрыто.")
-            return
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
         self.setWindowTitle("Управление категориями")
 
@@ -29,254 +95,79 @@ class CategoryView(QWidget):
         info_label = QLabel("Управление категориями инвентаризации. ID и Название категории вводятся вручную.")
         self.layout.addWidget(info_label)
 
-        # --- Настройки модели и таблицы ---
-        self.table_name = "Category" 
-        # Получаем названия столбцов из схемы БД
-        self.column_names = [col.split()[0] for col in DATABASE_SCHEMA.get(self.table_name, []) if not col.strip().startswith("FOREIGN KEY")]
-        # Уникальным столбцом для проверки при импорте и добавлении является сам ID
-        self.unique_column = "id_category"
-
-        self.model = QSqlTableModel(self, self.db)
-        self.model.setTable(self.table_name)
-        self.model.setEditStrategy(QSqlTableModel.OnFieldChange) # Сохранять изменения сразу
-        self.model.select() # Загрузить данные из таблицы
-
-        # Устанавливаем заголовки столбцов
-        header_map = {
-            "id_category": "ID Категории", # Изменяем заголовок
-            "category": "Название категории",
-        }
-        # Используем fieldName(i) для получения имени столбца в модели
-        for i in range(self.model.columnCount()):
-             col_name = self.model.record().fieldName(i)
-             if col_name in header_map:
-                self.model.setHeaderData(i, Qt.Horizontal, header_map[col_name])
-             else:
-                self.model.setHeaderData(i, Qt.Horizontal, col_name)
-
-
+        # --- Настройки таблицы ---
         self.table_view = QTableView()
-        self.table_view.setModel(self.model)
-        # --- УДАЛЕНО: Скрытие столбца ID (теперь он вводится вручную и должен быть виден) ---
-        # self.table_view.hideColumn(self.model.fieldIndex("id_category")) # Используем fieldIndex для надежности
-
+        # Model will be set by the Controller
         self.table_view.horizontalHeader().setStretchLastSection(True)
         self.table_view.setSelectionBehavior(QTableView.SelectRows)
         self.table_view.setSelectionMode(QTableView.SingleSelection)
-        self.table_view.setEditTriggers(QTableView.DoubleClicked | QTableView.SelectedClicked) # Разрешаем редактирование
-
+        self.table_view.setEditTriggers(QTableView.NoEditTriggers) # Editing via dialog
         self.layout.addWidget(self.table_view)
 
-        # --- Элементы для добавления новой записи ---
-        add_form_layout = QFormLayout()
-        self.category_id_input = QLineEdit() # НОВОЕ ПОЛЕ ДЛЯ ID
-        self.category_id_input.setPlaceholderText("Введите 2 символа ID")
-        self.category_id_input.setMaxLength(2) # Ограничение по длине
+        # Connect double click for editing
+        self.table_view.doubleClicked.connect(self._on_double_click)
 
-        self.category_name_input = QLineEdit()
-        self.category_name_input.setPlaceholderText("Введите название категории")
-        self.category_name_input.setMaxLength(40) # Ограничение по длине
 
-        add_form_layout.addRow("ID Категории:", self.category_id_input) # Добавляем поле ID
-        add_form_layout.addRow("Название категории:", self.category_name_input)
-
-        add_button = QPushButton("Добавить категорию")
-        add_button.clicked.connect(self._add_item)
-
-        add_layout = QHBoxLayout()
-        add_layout.addLayout(add_form_layout)
-        add_layout.addWidget(add_button, alignment=Qt.AlignBottom)
-
-        self.layout.addLayout(add_layout)
-
-        # --- Кнопки управления (Удалить, Импорт, Экспорт) ---
+        # --- Кнопки управления (Добавить, Редактировать, Удалить, Импорт, Экспорт) ---
         buttons_layout = QHBoxLayout()
+        add_button = QPushButton("Добавить категорию")
+        edit_button = QPushButton("Редактировать выбранную")
         delete_button = QPushButton("Удалить выбранную")
-        delete_button.clicked.connect(self._delete_selected_item)
-        buttons_layout.addWidget(delete_button)
-
         import_button = QPushButton("Импорт из CSV...")
-        import_button.clicked.connect(self._import_from_csv)
-        buttons_layout.addWidget(import_button)
-
         export_button = QPushButton("Экспорт в CSV...")
-        export_button.clicked.connect(self._export_to_csv)
-        buttons_layout.addWidget(export_button)
+        refresh_button = QPushButton("Обновить список") # Add refresh button
 
+        buttons_layout.addWidget(add_button)
+        buttons_layout.addWidget(edit_button)
+        buttons_layout.addWidget(delete_button)
+        buttons_layout.addWidget(import_button)
+        buttons_layout.addWidget(export_button)
+        buttons_layout.addWidget(refresh_button) # Add refresh button
         buttons_layout.addStretch()
 
         self.layout.addLayout(buttons_layout)
 
-        self.model.dataChanged.connect(self._handle_data_changed)
-        # primeInsert не нужен, т.к. ID вводится в поле ввода, а не в таблице напрямую
-        # self.model.primeInsert.connect(self._init_new_row)
+        # Подключаем сигналы к кнопкам (эти сигналы будут пойманы Controller'ом)
+        add_button.clicked.connect(self.add_category_requested.emit)
+        edit_button.clicked.connect(self._on_edit_button_clicked) # Use a helper to check selection
+        delete_button.clicked.connect(self._on_delete_button_clicked) # Use a helper to check selection
+        import_button.clicked.connect(self.import_csv_requested.emit)
+        export_button.clicked.connect(self.export_csv_requested.emit)
+        refresh_button.clicked.connect(self.refresh_list_requested.emit)
+
+    def set_model(self, model):
+        """Устанавливает модель данных для таблицы."""
+        self.table_view.setModel(model)
+        # Re-hide ID column if needed, after model is set
+        # id_col_index = model.fieldIndex("id_category")
+        # if id_col_index != -1:
+        #      self.table_view.hideColumn(id_col_index) # Keep ID visible as per original view
 
 
-    def _add_item(self):
-        """Добавляет новую категорию в базу данных."""
-        category_id = self.category_id_input.text().strip()
-        category_name = self.category_name_input.text().strip()
-
-        # --- Валидация ID ---
-        if not category_id:
-             QMessageBox.warning(self, "Предупреждение", "Пожалуйста, введите ID категории.")
-             return
-        # Проверка на 2 символа
-        if len(category_id) != 2:
-             QMessageBox.warning(self, "Предупреждение", "ID категории должен состоять ровно из 2 символов.")
-             return
-        # TODO: Добавить валидацию, если ID должен быть только цифрами или иметь определенный формат
-
-
-        if not category_name:
-            QMessageBox.warning(self, "Предупреждение", "Пожалуйста, введите название категории.")
-            return
-        # Проверка на длину названия
-        if len(category_name) > 40:
-             QMessageBox.warning(self, "Предупреждение", "Название категории не может превышать 40 символов.")
-             return
-
-
-        # Проверяем на уникальность ID и Названия перед добавлением
-        query = QSqlQuery(self.db)
-        query.prepare(f"SELECT COUNT(*) FROM {self.table_name} WHERE id_category = ? OR category = ?")
-        query.addBindValue(category_id)
-        query.addBindValue(category_name)
-        if query.exec_() and query.next():
-            count = query.value(0)
-            if count > 0:
-                # Уточняем, что именно дублируется
-                check_id_query = QSqlQuery(self.db)
-                check_id_query.prepare(f"SELECT COUNT(*) FROM {self.table_name} WHERE id_category = ?")
-                check_id_query.addBindValue(category_id)
-                check_id_query.exec_()
-                check_id_query.next()
-                if check_id_query.value(0) > 0:
-                     QMessageBox.warning(self, "Предупреждение", f"ID категории '{category_id}' уже существует.")
-                     return
-
-                check_name_query = QSqlQuery(self.db)
-                check_name_query.prepare(f"SELECT COUNT(*) FROM {self.table_name} WHERE category = ?")
-                check_name_query.addBindValue(category_name)
-                check_name_query.exec_()
-                check_name_query.next()
-                if check_name_query.value(0) > 0:
-                     QMessageBox.warning(self, "Предупреждение", f"Категория '{category_name}' уже существует.")
-                     return
-                # Если дошли сюда, значит, что-то не так с логикой проверки, но на всякий случай
-                QMessageBox.warning(self, "Предупреждение", "Дублирующаяся запись.")
-                return
-
-
-        # Добавляем новую запись через модель
-        row_count = self.model.rowCount()
-        self.model.insertRow(row_count)
-
-        # Устанавливаем данные в модель по именам столбцов
-        col_indices = {col: self.model.fieldIndex(col) for col in self.column_names}
-
-        if "id_category" in col_indices and col_indices["id_category"] != -1:
-             # Устанавливаем введенный ID (тип VARCHAR)
-             self.model.setData(self.model.index(row_count, col_indices["id_category"]), category_id)
-        if "category" in col_indices and col_indices["category"] != -1:
-             self.model.setData(self.model.index(row_count, col_indices["category"]), category_name)
-
-
-        if self.model.submitAll(): # Сохраняем изменения в базу данных
-            print(f"Категория '{category_name}' (ID: {category_id}) успешно добавлена.")
-            self.category_id_input.clear() # Очищаем поля ввода
-            self.category_name_input.clear()
-            # model.select() не нужен, т.к. OnFieldChange обновляет представление
-        else:
-            print("Ошибка при добавлении категории:", self.model.lastError().text())
-            QMessageBox.critical(self, "Ошибка", f"Не удалось добавить категорию: {self.model.lastError().text()}")
-            self.model.revertAll() # Отменяем изменения, если сохранение не удалось
-
-    def _delete_selected_item(self):
-        """Удаляет выбранную категорию."""
+    def get_selected_row(self):
+        """Возвращает индекс выбранной строки или -1, если ничего не выбрано."""
         selected_indexes = self.table_view.selectedIndexes()
         if not selected_indexes:
+            return -1
+        return selected_indexes[0].row()
+
+    def _on_double_click(self, index):
+        """Обработчик двойного клика по строке."""
+        row = index.row()
+        self.edit_category_requested.emit(row)
+
+    def _on_edit_button_clicked(self):
+        """Обработчик нажатия кнопки 'Редактировать'."""
+        row = self.get_selected_row()
+        if row == -1:
+            QMessageBox.warning(self, "Предупреждение", "Пожалуйста, выберите категорию для редактирования.")
+            return
+        self.edit_category_requested.emit(row)
+
+    def _on_delete_button_clicked(self):
+        """Обработчик нажатия кнопки 'Удалить'."""
+        row = self.get_selected_row()
+        if row == -1:
             QMessageBox.warning(self, "Предупреждение", "Пожалуйста, выберите категорию для удаления.")
             return
-
-        # Получаем индекс первой выбранной ячейки
-        selected_index = selected_indexes[0]
-        row = selected_index.row()
-
-        # Получаем ID и название категории для подтверждения
-        id_col_index = self.model.fieldIndex("id_category")
-        name_col_index = self.model.fieldIndex("category")
-        item_id = self.model.data(self.model.index(row, id_col_index), Qt.DisplayRole) if id_col_index != -1 else "N/A"
-        item_name = self.model.data(self.model.index(row, name_col_index), Qt.DisplayRole) if name_col_index != -1 else "Выбранная запись"
-
-
-        # Запрашиваем подтверждение у пользователя
-        reply = QMessageBox.question(self, "Подтверждение удаления",
-                                     f"Вы уверены, что хотите удалить категорию '{item_name}' (ID: {item_id})?\n"
-                                     "Объекты инвентаризации и подкатегории, связанные с этой категорией, потеряют свою категорию.",
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-
-        if reply == QMessageBox.Yes:
-            # Удаляем строку из модели
-            if self.model.removeRow(row):
-                if self.model.submitAll(): # Сохраняем изменение в базу данных
-                    print(f"Категория '{item_name}' (ID: {item_id}) успешно удалена.")
-                else:
-                    print("Ошибка при сохранении удаления:", self.model.lastError().text())
-                    QMessageBox.critical(self, "Ошибка", f"Не удалось удалить категорию: {self.model.lastError().text()}")
-                    self.model.revertAll() # Отменяем удаление
-            else:
-                print("Ошибка при удалении строки из модели.")
-                QMessageBox.critical(self, "Ошибка", "Не удалось удалить строку из модели.")
-
-    def _import_from_csv(self):
-        """Открывает диалог выбора файла и запускает импорт."""
-        file_path, _ = QFileDialog.getOpenFileName(self, f"Импорт данных в таблицу '{self.table_name}'","","CSV файлы (*.csv);;Все файлы (*)")
-
-        if file_path:
-            print(f"Выбран файл для импорта в {self.table_name}: {file_path}")
-            success, message = import_data_from_csv(self.db, file_path, self.table_name, self.column_names,column_digits={'id_category': 2}, unique_column=self.unique_column)
-
-            if success:
-                QMessageBox.information(self, "Импорт завершен", message)
-                self.model.select() # Обновляем представление после импорта
-            else:
-                QMessageBox.critical(self, "Ошибка импорта", message)
-        else:
-            print("Выбор файла отменен.")
-
-    def _export_to_csv(self):
-        """Открывает диалог сохранения файла и запускает экспорт."""
-        default_filename = f"{self.table_name}_export_{QDate.currentDate().toString('yyyyMMdd')}.csv"
-        file_path, _ = QFileDialog.getSaveFileName(self, f"Экспорт данных из таблицы '{self.table_name}'", default_filename, "CSV файлы (*.csv);;Все файлы (*)")
-
-        if file_path:
-            print(f"Выбран файл для экспорта из {self.table_name}: {file_path}")
-            # Вызываем универсальную функцию экспорта
-            # Включаем все столбцы, включая PK, для экспорта
-            success, message = export_data_to_csv(self.db, file_path, self.table_name, self.column_names)
-
-            if success:
-                QMessageBox.information(self, "Экспорт завершен", message)
-                print(f"Экспорт сохранен: {file_path}")
-            else:
-                QMessageBox.critical(self, "Ошибка экспорта", message)
-        else:
-            print("Сохранение отчета отменено.")
-
-
-    def _handle_data_changed(self, topLeft, bottomRight, roles):
-        """Обрабатывает сигнал dataChanged для проверки ошибок сохранения после редактирования ячейки."""
-        # Этот метод вызывается после успешного изменения данных в модели.
-        # Если при сохранении (из-за OnFieldChange) произошла ошибка,
-        # модель откатит изменения, и мы можем проверить lastError().
-        if self.model.lastError().type() != QSqlError.NoError:
-            error_message = self.model.lastError().text()
-            print(f"Ошибка при сохранении изменения: {error_message}")
-            QMessageBox.critical(self, "Ошибка сохранения", f"Не удалось сохранить изменение: {error_message}")
-            self.model.select() # Перезагружаем данные, чтобы откатить некорректное изменение в представлении
-
-    def _init_new_row(self, row, record):
-        """Устанавливает значения по умолчанию для новой строки перед вставкой."""
-        # При ручном вводе ID, здесь ничего не делаем, т.к. ID вводится в поле ввода, а не в таблице напрямую.
-        pass
+        self.delete_category_requested.emit(row)

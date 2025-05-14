@@ -1,4 +1,4 @@
-# File: ui/users_view.py
+# File: ui/employee_view.py
 import sys
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTableView, QPushButton,
                              QHBoxLayout, QLabel, QMessageBox, QLineEdit,
@@ -15,19 +15,19 @@ from PyQt5.QtCore import Qt, QModelIndex, QDate, QVariant, pyqtSignal # Import p
 
 # --- Диалог для добавления/редактирования пользователя ---
 # Этот диалог остается частью View, но логика сохранения переносится в Controller
-class UserDialog(QDialog):
-    def __init__(self, db_connection, user_data=None, parent=None):
+class EmployeeDialog(QDialog):
+    def __init__(self, db_connection, employee_data=None, parent=None):
         super().__init__(parent)
         self.db = db_connection # Still need db connection to populate department combo
-        self.user_data = user_data # None для добавления, dict для редактирования
+        self.employee_data = employee_data # None для добавления, dict для редактирования
 
         self.setWindowTitle("Добавить/Редактировать пользователя")
         self.layout = QFormLayout(self)
 
-        # Поля из Users
-        # id_user автоинкрементный, не вводим при добавлении, отображаем при редактировании
-        self.id_user_input = QLineEdit()
-        self.id_user_input.setReadOnly(True) # ID не редактируется
+        # Поля из Employee
+        # id_employee автоинкрементный, не вводим при добавлении, отображаем при редактировании
+        self.id_employee_input = QLineEdit()
+        self.id_employee_input.setReadOnly(True) # ID не редактируется
         self.fio_input = QLineEdit()
         self.fio_input.setMaxLength(60)
         self.cabinet_input = QLineEdit()
@@ -49,7 +49,7 @@ class UserDialog(QDialog):
         self.mail_input.setMaxLength(50)
 
         # Добавляем поля в форму
-        self.layout.addRow("ID пользователя:", self.id_user_input)
+        self.layout.addRow("ID пользователя:", self.id_employee_input)
         self.layout.addRow("ФИО:", self.fio_input)
         self.layout.addRow("Кабинет:", self.cabinet_input)
         self.layout.addRow("Отдел:", self.department_combo)
@@ -65,19 +65,19 @@ class UserDialog(QDialog):
         self._populate_departments_combo()
 
         # Если редактируем, заполняем поля текущими данными
-        if self.user_data:
-            self.id_user_input.setText(str(self.user_data.get('id_user', '')))
-            self.fio_input.setText(str(self.user_data.get('fio', '')))
-            self.cabinet_input.setText(str(self.user_data.get('cabinet', '')))
+        if self.employee_data:
+            self.id_employee_input.setText(str(self.employee_data.get('id_employee', '')))
+            self.fio_input.setText(str(self.employee_data.get('fio', '')))
+            self.cabinet_input.setText(str(self.employee_data.get('cabinet', '')))
             # Выбираем отдел по ID
-            self._select_combo_item(self.department_combo, self.user_data.get('id_department'))
-            self.post_input.setText(str(self.user_data.get('post', '')))
-            self.account_input.setText(str(self.user_data.get('account', '')))
-            self.ids_group_dc_input.setText(str(self.user_data.get('ids_group_dc', '')))
-            self.work_pc_input.setText(str(self.user_data.get('work_pc', '')))
-            self.work_pc_ip_input.setText(str(self.user_data.get('work_pc_ip', '')))
-            self.telephone_input.setText(str(self.user_data.get('telephone', '')))
-            self.mail_input.setText(str(self.user_data.get('mail', '')))
+            self._select_combo_item(self.department_combo, self.employee_data.get('id_department'))
+            self.post_input.setText(str(self.employee_data.get('post', '')))
+            self.account_input.setText(str(self.employee_data.get('account', '')))
+            self.ids_group_dc_input.setText(str(self.employee_data.get('ids_group_dc', '')))
+            self.work_pc_input.setText(str(self.employee_data.get('work_pc', '')))
+            self.work_pc_ip_input.setText(str(self.employee_data.get('work_pc_ip', '')))
+            self.telephone_input.setText(str(self.employee_data.get('telephone', '')))
+            self.mail_input.setText(str(self.employee_data.get('mail', '')))
 
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
@@ -95,10 +95,10 @@ class UserDialog(QDialog):
         while query.next():
             item_id = query.value(0)
             item_name = query.value(1)
-            self.department_combo.addItem(item_name, item_id) # Сохраняем ID как UserData
+            self.department_combo.addItem(item_name, item_id) # Сохраняем ID как EmployeeData
 
     def _select_combo_item(self, combo_box, item_id):
-        """Выбирает элемент в комбобоксе по его UserData (ID)."""
+        """Выбирает элемент в комбобоксе по его EmployeeData (ID)."""
         if item_id is None:
             combo_box.setCurrentIndex(0) # Выбираем "Выберите..." или "Все..."
             return
@@ -113,7 +113,7 @@ class UserDialog(QDialog):
     def get_data(self):
         """Возвращает данные из полей диалога в виде словаря."""
         data = {
-            # 'id_user': self.id_user_input.text().strip(), # ID handled by Model/Controller
+            # 'id_employee': self.id_employee_input.text().strip(), # ID handled by Model/Controller
             'fio': self.fio_input.text().strip(),
             'cabinet': self.cabinet_input.text().strip(),
             'id_department': self.department_combo.currentData(),
@@ -127,8 +127,8 @@ class UserDialog(QDialog):
         }
 
         # If editing, include the original ID
-        if self.user_data and 'id_user' in self.user_data:
-             data['id_user'] = self.user_data['id_user']
+        if self.employee_data and 'id_employee' in self.employee_data:
+             data['id_employee'] = self.employee_data['id_employee']
 
         return data
 
@@ -146,11 +146,11 @@ class UserDialog(QDialog):
         return True
 
 
-class UsersView(QWidget):
+class EmployeeView(QWidget):
     # Define signals that the Controller will connect to
-    add_user_requested = pyqtSignal()
-    edit_user_requested = pyqtSignal(int) # Emits row index
-    delete_user_requested = pyqtSignal(int) # Emits row index
+    add_employee_requested = pyqtSignal()
+    edit_employee_requested = pyqtSignal(int) # Emits row index
+    delete_employee_requested = pyqtSignal(int) # Emits row index
     refresh_list_requested = pyqtSignal()
     import_csv_requested = pyqtSignal()
     export_csv_requested = pyqtSignal() # Add export signal
@@ -200,7 +200,7 @@ class UsersView(QWidget):
         # Подключаем сигналы к кнопкам (эти сигналы будут пойманы Controller'ом)
         import_button.clicked.connect(self.import_csv_requested.emit)
         export_button.clicked.connect(self.export_csv_requested.emit) # Connect export signal
-        add_button.clicked.connect(self.add_user_requested.emit)
+        add_button.clicked.connect(self.add_employee_requested.emit)
         edit_button.clicked.connect(self._on_edit_button_clicked) # Use a helper to check selection
         delete_button.clicked.connect(self._on_delete_button_clicked) # Use a helper to check selection
         refresh_button.clicked.connect(self.refresh_list_requested.emit)
@@ -222,7 +222,7 @@ class UsersView(QWidget):
     def _on_double_click(self, index):
         """Обработчик двойного клика по строке."""
         row = index.row()
-        self.edit_user_requested.emit(row)
+        self.edit_employee_requested.emit(row)
 
     def _on_edit_button_clicked(self):
         """Обработчик нажатия кнопки 'Редактировать'."""
@@ -230,7 +230,7 @@ class UsersView(QWidget):
         if row == -1:
             QMessageBox.warning(self, "Предупреждение", "Пожалуйста, выберите пользователя для редактирования.")
             return
-        self.edit_user_requested.emit(row)
+        self.edit_employee_requested.emit(row)
 
     def _on_delete_button_clicked(self):
         """Обработчик нажатия кнопки 'Удалить'."""
@@ -238,8 +238,4 @@ class UsersView(QWidget):
         if row == -1:
             QMessageBox.warning(self, "Предупреждение", "Пожалуйста, выберите пользователя для удаления.")
             return
-        self.delete_user_requested.emit(row)
-
-    # Error handling and messages are now handled by the Controller
-    # def _handle_data_changed(self, topLeft, bottomRight, roles): ...
-
+        self.delete_employee_requested.emit(row)
