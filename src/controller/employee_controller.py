@@ -1,9 +1,8 @@
-# File: employee_controller.py
 from PyQt5.QtWidgets import QMessageBox, QFileDialog, QDialog
 from PyQt5.QtCore import QDate
 
-from model.employee_model import EmployeeModel
-from view.employee_view import EmployeeView, EmployeeDialog # Import both View components
+from src.model.employee_model import EmployeeModel
+from src.view.employee_view import EmployeeView, EmployeeDialog # Import both View components
 from src.utils.csv_handler import import_data_from_csv, export_data_to_csv # Assuming these are available
 from database import DATABASE_SCHEMA # Need schema for CSV handler
 
