@@ -104,7 +104,7 @@ class EmployeeController:
             else:
                 QMessageBox.critical(self.view, "Ошибка", message)
 
-    def import_employees_from_csv(self):
+    def import_employee_from_csv(self):
         """Обрабатывает запрос на импорт пользователей из CSV."""
         if self.db is None or not self.db.isOpen():
              QMessageBox.warning(self.view, "Предупреждение", "Невозможно выполнить импорт: соединение с базой данных отсутствует.")

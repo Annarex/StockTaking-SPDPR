@@ -5,17 +5,8 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTableView, QPushButton,
                              QInputDialog, QFormLayout, QFileDialog,
                              QDialog, QDialogButtonBox) # Import QDialog and QDialogButtonBox
 from PyQt5.QtSql import QSqlTableModel, QSqlDatabase, QSqlQuery, QSqlError
-from PyQt5.QtCore import Qt, QModelIndex, QDate, QVariant, pyqtSignal # Import pyqtSignal
-import re # Для валидации двух символов (остается в View/Dialog для UI-валидации)
+from PyQt5.QtCore import Qt, QModelIndex, QDate, QVariant, pyqtSignal 
 
-# Импортируем универсальный обработчик CSV (Controller will use this)
-# from src.utils.csv_handler import import_data_from_csv, export_data_to_csv
-
-# Импортируем схему базы данных (Model will use this)
-# from database import DATABASE_SCHEMA
-
-# --- Диалог для добавления/редактирования категории ---
-# Этот диалог остается частью View, но логика сохранения переносится в Controller
 class CategoryDialog(QDialog):
     def __init__(self, category_data=None, parent=None):
         super().__init__(parent)
@@ -48,7 +39,6 @@ class CategoryDialog(QDialog):
         self.layout.addWidget(self.button_box)
 
     def get_data(self):
-        """Возвращает данные из полей диалога в виде словаря."""
         data = {
             'id_category': self.category_id_input.text().strip(),
             'category': self.category_name_input.text().strip(),
@@ -56,7 +46,6 @@ class CategoryDialog(QDialog):
         return data
 
     def validate_data(self):
-        """Проверяет введенные данные (базовая валидация UI)."""
         data = self.get_data()
         if not data['id_category']:
              QMessageBox.warning(self, "Предупреждение", "Пожалуйста, введите ID категории.")
@@ -64,7 +53,6 @@ class CategoryDialog(QDialog):
         if len(data['id_category']) != 2:
              QMessageBox.warning(self, "Предупреждение", "ID категории должен состоять ровно из 2 символов.")
              return False
-        # TODO: Добавить валидацию, если ID должен быть только цифрами или иметь определенный формат
 
         if not data['category']:
             QMessageBox.warning(self, "Предупреждение", "Пожалуйста, введите название категории.")

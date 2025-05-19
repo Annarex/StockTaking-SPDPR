@@ -14,10 +14,8 @@ class CategoryModel:
             return
 
         self.table_name = "Category"
-        # Получаем названия столбцов из схемы БД
         self.column_names = [col.split()[0] for col in DATABASE_SCHEMA.get(self.table_name, []) if not col.strip().startswith("FOREIGN KEY")]
-        # Уникальным столбцом для проверки при импорте и добавлении является сам ID
-        self.unique_column = "id_category" # Based on schema definition
+        self.unique_column = "id_category"
 
         self._model = QSqlTableModel(None, self.db) # Parent is None here, Controller will manage
         self._model.setTable(self.table_name)
@@ -198,7 +196,6 @@ class CategoryModel:
         name_col_index = self._model.fieldIndex("category")
         item_id = self._model.data(self._model.index(row, id_col_index), Qt.DisplayRole) if id_col_index != -1 else "N/A"
         item_name = self._model.data(self._model.index(row, name_col_index), Qt.DisplayRole) if name_col_index != -1 else "Выбранная запись"
-
 
         if self._model.removeRow(row):
             if self._model.submitAll(): # Сохраняем изменение в базу данных

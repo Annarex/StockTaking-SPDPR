@@ -1,50 +1,24 @@
 # ui/main_window.py
 import sys
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QMenuBar, QAction,
-                             QVBoxLayout, QWidget, QLabel, QFileDialog,
-                             QMessageBox)
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QAction, QVBoxLayout, QWidget, QLabel, QMessageBox)
 from PyQt5.QtCore import Qt
-# Импортируем виджеты (убедитесь, что пути правильные относительно папки ui)
-# Старые виджеты (пока оставлены с TODO)
-# from src.view.object_types_view import ObjectTypesView
-# from src.view.inventory_view import InventoryView
-# from src.view.report_view import ReportView
-# from src.view.user_view import UsersView
-# from src.view.category_view import CategoryView
-# from src.view.subcategory_view import SubcategoryView
-# from src.view.unit_type_view import UnitTypeView
-# from src.view.order_status_view import OrderStatusView
-# from src.view.departments_view import DepartmentsView
-# from src.view.group_dc_view import GroupDCView
-# from src.view.note_view import NoteView
 
-from controller.employee_controller import UserController
-# from src.controller.category_controller import CategoryController
-# from src.controller.subcategory_controller import SubcategoryController
-# from src.controller.unit_type_controller import UnitTypeController
-# from src.controller.order_status_controller import OrderStatusController
-# from src.controller.departments_controller import DepartmentsController
-# from src.controller.group_dc_controller import GroupDCController
+from src.controller.employee_controller import EmployeeController
+from src.controller.departments_controller import DepartmentsController
+from src.controller.subcategory_controller import SubcategoryController
 # from src.controller.note_controller import NoteController
 # from src.controller.units_inventory_controller import UnitsInventoryController # Для новой инвентаризации
 # from src.controller.report_controller import ReportController # Для нового отчета
+from src.controller._generic_controller import GenericController
 
-
-# Импортируем функции для работы с БД (database.py находится в корне)
-from database import connect_db, create_all_tables, close_db # Используем create_all_tables
-# Импортируем универсальный обработчик CSV (находится в extension)
-from src.utils.csv_handler import import_data_from_csv, export_data_to_csv
-
-# Импортируем схему БД для получения названий таблиц и столбцов
-from database import DATABASE_SCHEMA
-
+from database import close_db
 
 class MainWindow(QMainWindow):
     def __init__(self, db_connection):
         super().__init__()
 
         self.db = db_connection
-        # Проверяем соединение с БД при инициализации
+        
         if not self.db or not self.db.isOpen():
              QMessageBox.critical(self, "Ошибка базы данных", "Соединение с базой данных не установлено или закрыто.")
              pass
@@ -68,7 +42,7 @@ class MainWindow(QMainWindow):
         self._current_view = None
         self._current_view_widget = None
         self._current_controller = None
-        
+
         self._create_menu_bar()
 
     def _create_menu_bar(self):
@@ -77,7 +51,7 @@ class MainWindow(QMainWindow):
         manager_menu = menu_bar.addMenu("Управление")        
 
         view_employee_action = QAction("Сотрудники", self)
-        view_employee_action.triggered.connect(self._open_empoyees_view)
+        view_employee_action.triggered.connect(self._open_employee_view)
         manager_menu.addAction(view_employee_action)
         
         manager_menu.addSeparator() # Добавляем разделитель
@@ -86,18 +60,28 @@ class MainWindow(QMainWindow):
         departments_action.triggered.connect(self._open_departments_view)
         manager_menu.addAction(departments_action)
 
+        # Группы домена
         group_dc_action = QAction("Группы домена", self)
-        group_dc_action.triggered.connect(self._open_group_dc_view)
+        group_dc_action.triggered.connect(
+            lambda: self._open_generic_view(
+                "GroupDC",
+                "id_group_dc",
+                "group_dc",
+                "Управление группами домена",
+                "новую группу домена",
+                unique_name_column="group_dc"
+            )
+        )
         manager_menu.addAction(group_dc_action)
 
-        note_action = QAction("Заметки", self)
-        note_action.triggered.connect(self._open_note_view)
-        manager_menu.addAction(note_action)
+        # note_action = QAction("Заметки", self)
+        # note_action.triggered.connect(self._open_note_view)
+        # manager_menu.addAction(note_action)
         # --- Конец новых пунктов меню ---
 
-        exit_action = QAction("Выход", self)
-        exit_action.triggered.connect(self.close)
-        manager_menu.addAction(exit_action)
+        # exit_action = QAction("Выход", self)
+        # exit_action.triggered.connect(self.close)
+        # manager_menu.addAction(exit_action)
 
         # Меню "Инвентаризация"
         inventory_menu = menu_bar.addMenu("Инвентаризация")
@@ -105,28 +89,56 @@ class MainWindow(QMainWindow):
         # view_inventory_action.triggered.connect(self._open_inventory_view)
         # inventory_menu.addAction(view_inventory_action)
 
+     
+        subcategory_action = QAction("Категории", self)
+        subcategory_action.triggered.connect(
+            lambda: self._open_generic_view(
+                "Category",
+                "id_category",
+                "category",
+                "Управление категориями",
+                "новую категорию",
+                unique_name_column="category"
+            )
+        )
+        inventory_menu.addAction(subcategory_action)
+        
         # Добавляем пункты меню для каждой из запрошенных таблиц
-        category_action = QAction("Категории", self)
-        category_action.triggered.connect(self._open_category_view)
-        inventory_menu.addAction(category_action)
-
         subcategory_action = QAction("Подкатегории", self)
         subcategory_action.triggered.connect(self._open_subcategory_view)
         inventory_menu.addAction(subcategory_action)
 
         unit_type_action = QAction("Типы единиц", self)
-        unit_type_action.triggered.connect(self._open_unit_type_view)
+        unit_type_action.triggered.connect(
+            lambda: self._open_generic_view(
+            "UnitType",
+            "id_unit_type",
+            "unit_type",
+            "Управление типами единиц",
+            "новый тип единицы",
+            unique_name_column="unit_type"
+            )
+        )
         inventory_menu.addAction(unit_type_action)
 
         order_status_action = QAction("Статусы заказов", self)
-        order_status_action.triggered.connect(self._open_order_status_view)
+        order_status_action.triggered.connect(
+            lambda: self._open_generic_view(
+                "OrderStatus",
+                "id_order_status",
+                "order_status",
+                "Управление статусами заказов",
+                "новый статус заказа",
+                unique_name_column="order_status"
+            )
+        )
         inventory_menu.addAction(order_status_action)
 
         # Меню "Отчеты"
-        reports_menu = menu_bar.addMenu("Отчеты")
-        create_report_action = QAction("Сформировать отчет", self)
-        create_report_action.triggered.connect(self._open_report_view)
-        reports_menu.addAction(create_report_action)
+        # reports_menu = menu_bar.addMenu("Отчеты")
+        # create_report_action = QAction("Сформировать отчет", self)
+        # create_report_action.triggered.connect(self._open_report_view)
+        # reports_menu.addAction(create_report_action)
 
     def _clear_layout(self):
         """Удаляет все виджеты из центрального макета."""
@@ -142,39 +154,16 @@ class MainWindow(QMainWindow):
              self.welcome_label.deleteLater()
              self.welcome_label = None
 
-    def _get_controller(self, controller_class, controller_key):
-        """ Возвращает экземпляр контроллера из кеша или создает новый. """
-        if controller_key not in self._controllers:
-            if self.db is None or not self.db.isOpen():
-                 QMessageBox.warning(self, "Предупреждение", f"Невозможно открыть раздел: соединение с базой данных отсутствует.")
-                 return None
-            try:
-                # Создаем экземпляр контроллера, передавая соединение с БД
-                controller_instance = controller_class(self.db)
-                self._controllers[controller_key] = controller_instance
-                print(f"Создан экземпляр контроллера: {controller_key}")
-            except Exception as e:
-                print(f"Ошибка при создании контроллера {controller_key}: {e}")
-                QMessageBox.critical(self, "Ошибка", f"Не удалось инициализировать раздел '{controller_key}'.")
-                return None
-        else:
-            print(f"Используется существующий экземпляр контроллера: {controller_key}")
-
-        return self._controllers.get(controller_key)
-       
-    def _open_view(self, controller_class, controller_key, view_title):
-        """ Универсальный метод для открытия представления через контроллер."""
+    def _open_view(self, controller_class,view_title, *args, **kwargs):
         if self.db is None or not self.db.isOpen():
              QMessageBox.warning(self, "Предупреждение", f"Невозможно открыть раздел '{view_title}': соединение с базой данных отсутствует.")
              return
 
-        controller = self._get_controller(controller_class, controller_key)
+        controller = controller_class(self.db, *args, **kwargs)
 
         if controller:
-            # Очищаем предыдущий виджет
             self._clear_layout()
 
-            # Получаем виджет представления от контроллера
             view_widget = controller.get_view()
 
             if view_widget:
@@ -184,52 +173,39 @@ class MainWindow(QMainWindow):
                 self._current_controller = controller # Сохраняем ссылку на текущий контроллер
                 self.setWindowTitle(f"Система управления инвентаризацией - {view_title}") # Обновляем заголовок окна
             else:
-                 QMessageBox.critical(self, "Ошибка", f"Контроллер '{controller_key}' не предоставил виджет представления.")
+                 QMessageBox.critical(self, "Ошибка", f"Контроллер '{controller_class}' не предоставил виджет представления.")
                  # Если виджет не получен, можно снова показать приветствие или сообщение об ошибке
                  self.welcome_label = QLabel(f"Ошибка загрузки раздела: {view_title}")
                  self.welcome_label.setAlignment(Qt.AlignCenter)
                  self.layout.addWidget(self.welcome_label)
 
-# --- Методы открытия разделов (теперь используют _open_view) ---
+    def _open_generic_view(self, table_name, id_column, name_column, view_title, add_input_placeholder, unique_name_column=None):
+       self._open_view(GenericController, view_title, table_name, id_column, name_column, view_title, add_input_placeholder, unique_name_column)
+        
+    def _open_employee_view(self):
+        self._open_view(EmployeeController, "Просмотр сотрудников")
 
-    def _open_user_view(self):
-        self._open_view(UserController, "user_controller", "Просмотр сотрудников")
-
-    def _open_category_view(self):
-        QMessageBox.information(self, "В разработке", "Раздел 'Категории' пока не реализован с использованием контроллера.")
-        # self._open_view(CategoryController, "category_controller", "Категории")
-
+    def _open_departments_view(self):
+        self._open_view(DepartmentsController, "Просмотр отделов")
+        
     def _open_subcategory_view(self):
-        QMessageBox.information(self, "В разработке", "Раздел 'Подкатегории' пока не реализован с использованием контроллера.")
-        # self._open_view(SubcategoryController, "subcategory_controller", "Подкатегории")
-
-    def _open_unit_type_view(self):
-        QMessageBox.information(self, "В разработке", "Раздел 'Типы единиц' пока не реализован с использованием контроллера.")
-        # self._open_view(UnitTypeController, "unit_type_controller", "Типы единиц")
+        self._open_view(SubcategoryController, "Просмотр категорий")
 
     def _open_order_status_view(self):
         QMessageBox.information(self, "В разработке", "Раздел 'Статусы заказов' пока не реализован с использованием контроллера.")
-        # self._open_view(OrderStatusController, "order_status_controller", "Статусы заказов")
-
-    def _open_departments_view(self):
-        QMessageBox.information(self, "В разработке", "Раздел 'Отделы' пока не реализован с использованием контроллера.")
-        # self._open_view(DepartmentsController, "departments_controller", "Отделы")
-
-    def _open_group_dc_view(self):
-        QMessageBox.information(self, "В разработке", "Раздел 'Группы домена' пока не реализован с использованием контроллера.")
-        # self._open_view(GroupDCController, "group_dc_controller", "Группы домена")
+        # self._open_view(OrderStatusController, "Статусы заказов")
 
     def _open_note_view(self):
         QMessageBox.information(self, "В разработке", "Раздел 'Заметки' пока не реализован с использованием контроллера.")
-        # self._open_view(NoteController, "note_controller", "Заметки")
+        # self._open_view(NoteController, "Заметки")
 
     def _open_inventory_view(self):
         QMessageBox.information(self, "В разработке", "Раздел 'Просмотр инвентаризации' пока не реализован с использованием контроллера.")
-        # self._open_view(UnitsInventoryController, "units_inventory_controller", "Просмотр инвентаризации")
+        # self._open_view(UnitsInventoryController, "Просмотр инвентаризации")
 
     def _open_report_view(self):
         QMessageBox.information(self, "В разработке", "Раздел 'Отчеты' пока не реализован с использованием контроллера.")
-        # self._open_view(ReportController, "report_controller", "Отчеты")
+        # self._open_view(ReportController, "Отчеты")
 
     def closeEvent(self, event):
         print("Закрытие главного окна.")

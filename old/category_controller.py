@@ -1,4 +1,3 @@
-# File: category_controller.py
 from PyQt5.QtWidgets import QMessageBox, QFileDialog, QDialog
 from PyQt5.QtCore import QDate
 
@@ -42,20 +41,18 @@ class CategoryController:
 
 
     def add_category(self):
-        """Обрабатывает запрос на добавление новой категории."""
         dialog = CategoryDialog(parent=self.view)
         if dialog.exec_() == QDialog.Accepted:
-            if dialog.validate_data(): # Basic UI validation
+            if dialog.validate_data():
                 data = dialog.get_data()
                 success, message = self.model.add_category(data)
                 if success:
                     QMessageBox.information(self.view, "Успех", message)
-                    self.refresh_list() # Refresh view after successful add
+                    self.refresh_list()
                 else:
                     QMessageBox.critical(self.view, "Ошибка", message)
 
     def edit_category(self, row):
-        """Обрабатывает запрос на редактирование выбранной категории."""
         if row == -1:
              QMessageBox.warning(self.view, "Предупреждение", "Пожалуйста, выберите категорию для редактирования.")
              return
@@ -76,14 +73,11 @@ class CategoryController:
                 else:
                     QMessageBox.critical(self.view, "Ошибка", message)
 
-
     def delete_category(self, row):
-        """Обрабатывает запрос на удаление выбранной категории."""
         if row == -1:
              QMessageBox.warning(self.view, "Предупреждение", "Пожалуйста, выберите категорию для удаления.")
              return
 
-        # Get category info for confirmation message before deleting
         category_data = self.model.get_category_data(row)
         item_id = category_data.get('id_category', 'N/A')
         item_name = category_data.get('category', 'Выбранная запись')
@@ -97,7 +91,7 @@ class CategoryController:
             success, message = self.model.delete_category(row)
             if success:
                 QMessageBox.information(self.view, "Успех", message)
-                self.refresh_list() # Refresh view after successful delete
+                self.refresh_list()
             else:
                 QMessageBox.critical(self.view, "Ошибка", message)
 
@@ -113,16 +107,12 @@ class CategoryController:
 
         if file_path:
             print(f"Выбран файл для импорта в {self.model.table_name}: {file_path}")
-            # Get column names from schema, excluding FK definitions
             all_category_cols = [col.split()[0] for col in DATABASE_SCHEMA.get(self.model.table_name, []) if not col.strip().startswith("FOREIGN KEY")]
-
-            # Call the utility function
-            # Assuming column_digits={'id_category': 2} is needed for validation during import
             success, message = import_data_from_csv(self.db, file_path, self.model.table_name, all_category_cols, column_digits={'id_category': 2}, unique_column=self.model.unique_column)
 
             if success:
                 QMessageBox.information(self.view, "Импорт завершен", message)
-                self.refresh_list() # Refresh view after import
+                self.refresh_list()
             else:
                 QMessageBox.critical(self.view, "Ошибка импорта", message)
         else:
